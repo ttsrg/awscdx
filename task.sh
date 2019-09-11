@@ -63,8 +63,43 @@ aws ec2 modify-subnet-attribute --subnet-id $SUBN_PUB_ID  --map-public-ip-on-lau
 
 
 #############################################################
+
 #############################################################
 
+#8 Создать экземпляр Amazon RDS(PostgreSQL) cо значением “unique-name-db ” для db-instance-identifier.
+### use it in test purposes , for prod purposes you should use a variable/symbol-link instead of the real pass or
+###  use any  different secure  ways
+
+: '
+aws docdb create-db-subnet-group   --db-subnet-group-name dbsubngncdx \
+--db-subnet-group-description descr_dbsubngncdx \
+--subnet-ids $SUBN_PRIV_ID 
+'
+
+aws rds create-db-instance --allocated-storage 5 --db-instance-class db.t2.micro \
+--db-instance-identifier db-cdx --engine postgres \
+--master-username mastercdv  --master-user-password secret69cdx
+
+
+
+#9 Сделать snapshot для созданного Amazon RDS.
+aws rds create-db-snapshot --db-instance-identifier db-cdx \
+--db-snapshot-identifier db-cdx-snapshot 
+
+
+echo "# 10Создать второй экземпляр Amazon RDS cо значением “.. test-db-restore.. ” для db-instance-identifier и который будет восстановлен из snapshot(пункт 9)."
+# you have to wait time for creating snapshot before - it's a curve workaround
+sleep 300 && \
+aws rds restore-db-instance-from-db-snapshot \
+--db-instance-identifier db-cdx-restore \
+--db-snapshot-identifier db-cdx-snapshot
+
+
+echo "#11 Удалить созданные Amazon RDS-инстансы."
+aws rds delete-db-instance --db-instance-identifier db-cdx-restore --skip-final-snapshot
+aws rds delete-db-instance --db-instance-identifier db-cdx  --skip-final-snapshot
+
+aws rds delete-db-snapshot  --db-snapshot-identifier db-cdx-snapshot
 
 
 echo "#12 Создать Amazon Security Group, разрешить доступ к 80 порту для всех, а к 22 порту только для вашего IP-адреса."
@@ -78,13 +113,13 @@ aws ec2 create-tags --resources $(aws ec2 describe-security-groups \
 --query SecurityGroups[].GroupId --output text) \
 --tags Key=Name,Value=sgcdx
 
-#inbound rules for ssh
+#inbound rule for ssh
 aws ec2 authorize-security-group-ingress --group-id \
 $(aws ec2 describe-security-groups --filters Name=group-name,Values=sgncdx \
 --query SecurityGroups[].GroupId --output text) \
 --protocol tcp --port 22 --cidr $(dig +short myip.opendns.com @resolver1.opendns.com)/32
 
-#inbound rules for web
+#inbound rule for web
 aws ec2 authorize-security-group-ingress --group-id \
 $(aws ec2 describe-security-groups --filters Name=group-name,Values=sgncdx \
 --query SecurityGroups[].GroupId --output text) \
