@@ -62,27 +62,24 @@ echo "#4.8 enable auto-assign public IPv4 address"
 aws ec2 modify-subnet-attribute --subnet-id $SUBN_PUB_ID  --map-public-ip-on-launch --region us-east-1
 
 
-#############################################################
+echo "#5 Создать “unique-name” Amazon S3 bucket."
+aws s3api create-bucket --bucket cdx-srg11sept19 --region us-east-1
+
 
 #############################################################
 
-#8 Создать экземпляр Amazon RDS(PostgreSQL) cо значением “unique-name-db ” для db-instance-identifier.
+#############################################################
+
+echo "#8 Создать экземпляр Amazon RDS(PostgreSQL) cо значением “unique-name-db ” для db-instance-identifier."
 ### use it in test purposes , for prod purposes you should use a variable/symbol-link instead of the real pass or
 ###  use any  different secure  ways
-
-: '
-aws docdb create-db-subnet-group   --db-subnet-group-name dbsubngncdx \
---db-subnet-group-description descr_dbsubngncdx \
---subnet-ids $SUBN_PRIV_ID 
-'
 
 aws rds create-db-instance --allocated-storage 5 --db-instance-class db.t2.micro \
 --db-instance-identifier db-cdx --engine postgres \
 --master-username mastercdv  --master-user-password secret69cdx
 
 
-
-#9 Сделать snapshot для созданного Amazon RDS.
+echo "#9 Сделать snapshot для созданного Amazon RDS."
 aws rds create-db-snapshot --db-instance-identifier db-cdx \
 --db-snapshot-identifier db-cdx-snapshot 
 
@@ -100,6 +97,9 @@ aws rds delete-db-instance --db-instance-identifier db-cdx-restore --skip-final-
 aws rds delete-db-instance --db-instance-identifier db-cdx  --skip-final-snapshot
 
 aws rds delete-db-snapshot  --db-snapshot-identifier db-cdx-snapshot
+
+
+
 
 
 echo "#12 Создать Amazon Security Group, разрешить доступ к 80 порту для всех, а к 22 порту только для вашего IP-адреса."
