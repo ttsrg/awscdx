@@ -63,7 +63,29 @@ aws ec2 modify-subnet-attribute --subnet-id $SUBN_PUB_ID  --map-public-ip-on-lau
 
 
 echo "#5 Создать “unique-name” Amazon S3 bucket."
-aws s3api create-bucket --bucket cdx-srg11sept19 --region us-east-1
+DNS_NAME=s3-cdx && \
+aws s3api create-bucket --bucket $DNS_NAME --region us-east-1 && \
+cat <<EOF >> cors.json 
+{
+  "CORSRules": [
+    {
+      "AllowedOrigins": ["http://$DNS_NAME.com"],
+      "AllowedHeaders": ["*"],
+      "AllowedMethods": ["PUT", "POST", "DELETE"],
+      "MaxAgeSeconds": 3000,
+      "ExposeHeaders": ["x-amz-server-side-encryption"]
+    },
+    {
+      "AllowedOrigins": ["*"],
+      "AllowedHeaders": ["Authorization"],
+      "AllowedMethods": ["GET", "HEAD"],
+      "MaxAgeSeconds": 3000
+    }
+  ]
+}
+EOF
+&& \
+aws s3api put-bucket-cors --bucket $DNS_NAME --cors-configuration file://cors.json
 
 
 #############################################################
