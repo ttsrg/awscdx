@@ -1,7 +1,6 @@
 #!/bin/bash
 
 #define variables
-#AWS_REGION=us-east-1
 #AVALAB_ZONE=us-east-1a
 
 # all commands execute under usual bash user
@@ -11,7 +10,9 @@
 
 
 echo "#1 Создать свою собственную Amazon VPC."
-VPC_ID=$(aws ec2 create-vpc --cidr-block 10.0.0.0/16 --region us-east-1 \
+
+REGION=us-east-1 && \
+VPC_ID=$(aws ec2 create-vpc --cidr-block 10.0.0.0/16 --region $REGION \
  --query 'Vpc.{VpcId:VpcId}'   --output text) && echo "VPC_ID was created = $VPC_ID"
 
 
@@ -59,17 +60,26 @@ aws ec2 associate-route-table --route-table-id $ROUTE_TABLE_ID --subnet-id $SUBN
 
 
 echo "#4.8 enable auto-assign public IPv4 address"
-aws ec2 modify-subnet-attribute --subnet-id $SUBN_PUB_ID  --map-public-ip-on-launch --region us-east-1
+aws ec2 modify-subnet-attribute --subnet-id $SUBN_PUB_ID  --map-public-ip-on-launch --region REGION=us-east-1
+
 
 
 echo "#5 Создать “unique-name” Amazon S3 bucket."
-DNS_NAME=s3-cdx && \
-aws s3api create-bucket --bucket $DNS_NAME --region us-east-1 && \
-cat <<EOF >> cors.json 
+BUCKET_NAME=s3-cdx && \
+aws s3api create-bucket --bucket $BUCKET_NAME --region REGION=us-east-1
+
+
+
+
+echo "#6 Настроить CORS для созданной Amazon S3 bucket, чтобы разрешить PUT, POST, 
+DELETE-запросы только c домена “unique-name.com”, а HEAD, GET-запросы с любого источника."
+
+(
+cat <<EOF > .cors.json
 {
   "CORSRules": [
     {
-      "AllowedOrigins": ["http://$DNS_NAME.com"],
+      "AllowedOrigins": ["http://$BUCKET_NAME.com"],
       "AllowedHeaders": ["*"],
       "AllowedMethods": ["PUT", "POST", "DELETE"],
       "MaxAgeSeconds": 3000,
@@ -84,13 +94,42 @@ cat <<EOF >> cors.json
   ]
 }
 EOF
-&& \
-aws s3api put-bucket-cors --bucket $DNS_NAME --cors-configuration file://cors.json
+) && aws s3api put-bucket-cors --bucket $BUCKET_NAME --cors-configuration file://.cors.json
+
+#check
+# aws s3api get-bucket-cors --bucket $BUCKET_NAME
+# curl  $BUCKET_NAME.s3-website-$REGION.amazonaws.com 
 
 
-#############################################################
+echo "#7 Создать нового пользователя в Amazon IAM c возможностью программного доступа только к
+“unique-name” Amazon S3 buсket и посредством только PUT-запросов."
+USER_NAME=putuser && \
+aws iam create-user --user-name $USER_NAME &&\
+(
+cat <<EOF > .putpolicy.json
+{
+   "Statement": [
+      {
+         "Effect": "Allow",
+         "Principal": {
+            "AWS": "$(aws iam get-user --user-name $USER_NAME --query User.Arn --output text)"
+         },
+         "Action": [
+            "s3:PutObject"
+         ],
+         "Resource": "arn:aws:s3:::$BUCKET_NAME/*"
+      }
+   ]
+}
+EOF
+) && aws s3api put-bucket-policy --bucket $BUCKET_NAME --policy file://.putpolicy.json
 
-#############################################################
+
+#check
+# aws s3api get-bucket-policy --bucket $BUCKET_NAME
+# aws s3api put-object --bucket $BUCKET_NAME --key task.sh --body task.sh --profile putuser
+
+
 
 echo "#8 Создать экземпляр Amazon RDS(PostgreSQL) cо значением “unique-name-db ” для db-instance-identifier."
 ### use it in test purposes , for prod purposes you should use a variable/symbol-link instead of the real pass or
