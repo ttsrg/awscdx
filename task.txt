@@ -1,19 +1,18 @@
-#!/bin/bash
+# commands to doing tasks in aws 
 
 #define variables
-#AVALAB_ZONE=us-east-1a
+AVALAB_ZONE=us-east-1a
+REGION=us-east-1
 
 # all commands execute under usual bash user
 
 ### I will use default aws region us-east-1 below , if necessary to use unique/special region
 ### you have to use option (--region <region>). it's right for zones also
 
-
 echo "#1 Создать свою собственную Amazon VPC."
 
-REGION=us-east-1 && \
 VPC_ID=$(aws ec2 create-vpc --cidr-block 10.0.0.0/16 --region $REGION \
- --query 'Vpc.{VpcId:VpcId}'   --output text) && echo "VPC_ID was created = $VPC_ID"
+--query 'Vpc.{VpcId:VpcId}'   --output text) && echo "VPC_ID was created = $VPC_ID"
 
 
 echo "#2 Добавить “ test ”  -тэг для созданной VPC."
@@ -24,14 +23,14 @@ aws ec2  modify-vpc-attribute --enable-dns-hostnames --vpc-id $VPC_ID
 
 
 echo "#4 Создать 2 subnets для созданной VPC. Один subnet должен быть публичным(доступен из интернета), второй - оставаться приватным."
-SUBN_PUB_ID=$(aws ec2 create-subnet --vpc-id $VPC_ID --cidr-block 10.0.1.0/28 --availability-zone us-east-1a --output text --query 'Subnet.{SubnetId:SubnetId}')
-SUBN_PRIV_ID=$(aws ec2 create-subnet --vpc-id $VPC_ID --cidr-block 10.0.2.0/28 --availability-zone us-east-1a --output text --query 'Subnet.{SubnetId:SubnetId}')
+SUBN_PUB_ID=$(aws ec2 create-subnet --vpc-id $VPC_ID --cidr-block 10.0.1.0/28 \
+--availability-zone $AVALAB_ZONE --output text --query 'Subnet.{SubnetId:SubnetId}')
+SUBN_PRIV_ID=$(aws ec2 create-subnet --vpc-id $VPC_ID \
+--cidr-block 10.0.2.0/28 --availability-zone $AVALAB_ZONE --output text --query 'Subnet.{SubnetId:SubnetId}')
 
 echo "create tags for subnets"
 aws ec2 create-tags --resources  $SUBN_PUB_ID --tags Key=Name,Value=subn_pub
 aws ec2 create-tags --resources  $SUBN_PRIV_ID  --tags Key=Name,Value=subn_priv
-
-
 
 
 echo "#############################"
@@ -60,13 +59,13 @@ aws ec2 associate-route-table --route-table-id $ROUTE_TABLE_ID --subnet-id $SUBN
 
 
 echo "#4.8 enable auto-assign public IPv4 address"
-aws ec2 modify-subnet-attribute --subnet-id $SUBN_PUB_ID  --map-public-ip-on-launch --region REGION=us-east-1
+aws ec2 modify-subnet-attribute --subnet-id $SUBN_PUB_ID  --map-public-ip-on-launch --region $REGION
 
 
 
 echo "#5 Создать “unique-name” Amazon S3 bucket."
 BUCKET_NAME=s3-cdx && \
-aws s3api create-bucket --bucket $BUCKET_NAME --region REGION=us-east-1
+aws s3api create-bucket --bucket $BUCKET_NAME --region $REGION
 
 
 
@@ -141,13 +140,13 @@ aws rds create-db-instance --allocated-storage 5 --db-instance-class db.t2.micro
 
 
 echo "#9 Сделать snapshot для созданного Amazon RDS."
+# you have to wait time for creating db before (available state)
 aws rds create-db-snapshot --db-instance-identifier db-cdx \
---db-snapshot-identifier db-cdx-snapshot 
+--db-snapshot-identifier db-cdx-snapshot
 
 
 echo "# 10Создать второй экземпляр Amazon RDS cо значением “.. test-db-restore.. ” для db-instance-identifier и который будет восстановлен из snapshot(пункт 9)."
-# you have to wait time for creating snapshot before - it's a curve workaround
-sleep 300 && \
+# you have to wait time for creating snapshot before
 aws rds restore-db-instance-from-db-snapshot \
 --db-instance-identifier db-cdx-restore \
 --db-snapshot-identifier db-cdx-snapshot
@@ -157,6 +156,7 @@ echo "#11 Удалить созданные Amazon RDS-инстансы."
 aws rds delete-db-instance --db-instance-identifier db-cdx-restore --skip-final-snapshot
 aws rds delete-db-instance --db-instance-identifier db-cdx  --skip-final-snapshot
 
+# necessary waiting for deleting dbs
 aws rds delete-db-snapshot  --db-snapshot-identifier db-cdx-snapshot
 
 
@@ -178,7 +178,7 @@ aws ec2 create-tags --resources $(aws ec2 describe-security-groups \
 aws ec2 authorize-security-group-ingress --group-id \
 $(aws ec2 describe-security-groups --filters Name=group-name,Values=sgncdx \
 --query SecurityGroups[].GroupId --output text) \
---protocol tcp --port 22 --cidr $(dig +short myip.opendns.com @resolver1.opendns.com)/32
+--protocol tcp --port 22 --cidr $(curl https://ipinfo.io/ip)/32
 
 #inbound rule for web
 aws ec2 authorize-security-group-ingress --group-id \
@@ -215,7 +215,7 @@ INSTANCE_PUB_IP=$(aws ec2 describe-instances --instance-ids $INSTANCE_ID \
 
 
 echo "#14 Подключиться по ssh к созданному EC2, установить и запустить Nginx."
- # have to exec commands at created instance
+# have to exec commands at created instance
 : '
 ssh -i "awscdxkey.pem" ubuntu@$INSTANCE_PUB_DNS
 sudo apt update
@@ -229,8 +229,14 @@ curl  $INSTANCE_PUB_DNS
 echo "#16 Удалить созданный EC2-инстанс."
 aws ec2 terminate-instances --instance-id $INSTANCE_ID
 
+: '
+!!! После выполнения тестового задания не забудьте удалить все созданные
+ресурсы с вашего Amazon AWS-аккаунта, чтобы исключить дальнейшую
+тарификацию и списания денег с вашей карточки после истечения(или выхода из)
+Amazon Free Tier.
+'
 
 
-exit 0
+
 
 
